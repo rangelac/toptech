@@ -20,6 +20,7 @@ export async function syncPage({db,fetchPage}:SyncDeps){
   const result=await fetchPage(`/${job.kind}?limit=100&offset=${job.offset}`);
   if(!Array.isArray(result.data)||result.data.some((item:any)=>typeof item.id!=='string'))throw Error('Resposta inesperada do Asaas. Tente retomar a importação.');
   if(result.hasMore&&!result.data.length)throw Error('O Asaas retornou uma página vazia. Tente retomar a importação.');
+  const batch={kind:job.kind,count:result.data.length,items:result.data.slice(-4).reverse().map((item:any)=>job.kind==='customers'?{label:item.name||'Cliente',detail:'Cadastro de cliente recebido'}:{label:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(item.value||0)),detail:item.dueDate?'Vencimento em '+item.dueDate.split('-').reverse().join('/'):'Cobrança recebida'})};
   const writes=result.data.map((item:any)=>db.prepare('INSERT INTO records(key,generation,kind,id,data) VALUES(?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET data=excluded.data').bind(`${job.id}:${job.kind}:${item.id}`,job.id,job.kind,item.id,JSON.stringify(item)));
   if(Number.isFinite(result.totalCount))job[job.kind==='customers'?'totalCustomers':'totalPayments']=result.totalCount;
   let done=false;
@@ -34,9 +35,10 @@ export async function syncPage({db,fetchPage}:SyncDeps){
   if(done){
    // Cleanup is optional; it must not turn a committed import into a failure.
    try{await db.prepare('DELETE FROM records WHERE generation<>?').bind(job.id).run()}catch{}
-   return {next:null,progress:{pending:false,phase:'complete',customers:job.totalCustomers??null,payments:job.totalPayments??null}};
+   const totals=await db.prepare('SELECT kind,COUNT(*) AS count FROM records WHERE generation=? GROUP BY kind').bind(job.id).all();const counts:any={customers:0,payments:0};for(const row of totals.results)counts[row.kind]=Number(row.count);
+   return {next:null,batch,progress:{pending:false,phase:'complete',...counts,totalCustomers:counts.customers,totalPayments:counts.payments}};
   }
-  return {next:true,progress:await getSyncState(db)};
+  return {next:true,batch,progress:await getSyncState(db)};
  }finally{
   // Do not erase a lease taken by another request after expiration.
   await db.prepare('DELETE FROM settings WHERE id=? AND value=?').bind('syncLease',lease).run();
