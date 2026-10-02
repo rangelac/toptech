@@ -1,3 +1,54 @@
+# Toptech — Gestão de cobranças
+
+Sistema de acompanhamento da carteira de rastreamento veicular da Toptech, integrado ao Asaas.
+
+## Funcionalidades implementadas
+
+- Login da Toptech com senha armazenada como hash, sessões e limitação de tentativas.
+- Importação paginada de clientes e cobranças, com retomada e progresso por lote.
+- Painel de inadimplência, valores recebidos, parcelas e faixas de atraso.
+- Fila de prioridades e histórico de contatos por cliente.
+- Preparação de mensagens para WhatsApp e integração com instância Evolution API v2.
+- Ativação individual da notificação semanal de atraso por SMS no Asaas.
+
+## Ambiente atual e implantação
+
+Esta versão roda em **Sites / Cloudflare Workers**, com banco **D1** e controle de acesso privado da plataforma. O login da Toptech é uma camada adicional: o servidor também exige a identidade autenticada fornecida pela hospedagem atual.
+
+O endereço planejado é **toptech.cartao.in**. A conexão desse domínio e uma possível migração para Hostinger ainda precisam ser configuradas. Este repositório não é, por si só, uma instalação pronta para hospedagem PHP ou Node.js genérica: uma migração exige adaptar o banco, as variáveis de ambiente e a autenticação vinculada à plataforma. Antes da migração, confirme o plano da Hostinger e faça backup dos dados reais.
+
+O webhook do Asaas tem um endpoint implementado, mas a recepção externa ainda depende de configurar o acesso de integração da hospedagem. WhatsApp requer um provedor e uma instância conectada. Nenhum envio automático em massa é ativado por este projeto.
+
+## Configuração protegida
+
+Use `.env.example` como referência. Para desenvolvimento, copie para `.env`; para produção, configure os valores no gerenciador de segredos da hospedagem. Nunca coloque chaves ou senhas no código ou no navegador.
+
+| Variável | Finalidade |
+| --- | --- |
+| `ENCRYPTION_KEY` | Protege as credenciais salvas no banco. Preserve-a para manter acesso às credenciais existentes. |
+| `TOPTECH_PASSWORD_HASH` | Hash da senha, no formato `pbkdf2:100000:<salt>:<hash SHA-256 em hexadecimal>`. Nunca use a senha em texto puro. |
+| `ASAAS_API_KEY` | Chave Asaas opcional no servidor; uma chave salva na tela de integrações tem preferência. |
+| `ASAAS_WEBHOOK_TOKEN` | Token de validação do endpoint de webhook. |
+| `EVOLUTION_API_URL` | Endereço HTTPS do provedor Evolution API v2. |
+| `EVOLUTION_API_KEY` | Credencial privada do provedor. |
+| `EVOLUTION_INSTANCE` | Nome da instância existente de WhatsApp. |
+
+O banco não está incluído no repositório. As migrações ficam em `drizzle/`; preserve as migrações já aplicadas e acrescente novas quando necessário.
+
+## Verificação
+
+```sh
+npm ci
+node tests/auth.test.mjs
+node tests/sync.test.mjs
+npx tsc --noEmit
+npm run build
+```
+
+Os testes usam o módulo SQLite do Node.js; use Node.js 24. As instruções do ambiente de desenvolvimento original estão abaixo.
+
+---
+
 # vinext-starter
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
@@ -124,3 +175,4 @@ The portable build runs Vinext directly without a host `timeout` command. The ma
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+
