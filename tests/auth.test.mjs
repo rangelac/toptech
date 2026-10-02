@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {hashPassword,verifyPassword,sha256,newToken,validSession,takeLoginAttempt,sessionCookie} from '../lib/auth.ts';
+const sql=new DatabaseSync(':memory:');sql.exec('CREATE TABLE sessions(id TEXT PRIMARY KEY,platform_user TEXT,expires_at INTEGER);CREATE TABLE login_attempts(id TEXT PRIMARY KEY,attempts INTEGER,window_start INTEGER)');
+const db={prepare(query){return {bind(...args){return {first(){return sql.prepare(query).get(...args)||null},run(){return sql.prepare(query).run(...args)}}}}}};
+const encoded='pbkdf2:100000:test-salt:'+await hashPassword('test-only-password','test-salt');
+assert.equal(await verifyPassword('test-only-password',encoded),true);assert.equal(await verifyPassword('wrong',encoded),false);assert.equal(await verifyPassword('test-only-password',encoded.replace('100000','1')),false);
+const token=newToken();const digest=await sha256(token);assert.notEqual(token,digest);sql.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest,'platform-user-1',Date.now()+10000);
+const req=(t=token,user='platform-user-1')=>new Request('https://site.test/api/dashboard',{headers:{cookie:'__Host-toptech_session='+t,'oai-authenticated-user-id':user}});
+assert.equal(await validSession(req(),db),true);assert.equal(await validSession(req(token,'different-user'),db),false);assert.equal(await validSession(req(newToken()),db),false);assert.equal(await validSession(new Request('https://site.test'),db),false);
+sql.prepare('UPDATE sessions SET expires_at=0').run();assert.equal(await validSession(req(),db),false);sql.prepare('DELETE FROM sessions').run();assert.equal(await validSession(req(),db),false);
+for(let i=0;i<5;i++)assert.equal(await takeLoginAttempt(db,'platform-user-1'),true);assert.equal(await takeLoginAttempt(db,'platform-user-1'),false);assert.equal(await takeLoginAttempt(db,'other-user'),true);sql.prepare('UPDATE login_attempts SET window_start=0').run();assert.equal(await takeLoginAttempt(db,'platform-user-1'),true);
+const cookie=sessionCookie(req(),token);for(const flag of ['__Host-','HttpOnly','Secure','SameSite=Strict','Path=/','Max-Age=28800'])assert.ok(cookie.includes(flag));assert.ok(sessionCookie(req(),'',true).includes('Max-Age=0'));
+console.log('PASS: password verification, wrong password, token hashing, expiry, logout, user binding, throttling and secure cookies.');

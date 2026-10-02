@@ -1,11 +1,13 @@
+import {validSession,unauthorized} from './auth';
 import {env} from 'cloudflare:workers';
 export function runtime(){return env as any}
 export function db(){const d=runtime().DB;if(!d)throw Error('Banco de dados indisponível. Tente novamente mais tarde.');return d}
 export async function setting(id:string){return (await db().prepare('SELECT value FROM settings WHERE id=?').bind(id).first())?.value||null}
 export async function save(id:string,value:string){await db().prepare('INSERT INTO settings(id,value) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value').bind(id,value).run()}
-export function guard(req:Request,write=false){if(!req.headers.get('oai-authenticated-user-id'))throw Error('Acesso autenticado necessário.');if(write){const origin=req.headers.get('origin');if(!origin||origin!==new URL(req.url).origin)throw Error('Origem da solicitação inválida.')}}
+export function guardPlatform(req:Request,write=false){if(!req.headers.get('oai-authenticated-user-id'))throw unauthorized('Acesso privado necessário.');if(write){const origin=req.headers.get('origin');if(!origin||origin!==new URL(req.url).origin)throw Error('Origem da solicitação inválida.')}}
+export async function guard(req:Request,write=false){guardPlatform(req,write);if(!await validSession(req,db()))throw unauthorized()}
 export function json(value:any,status=200){return Response.json(value,{status,headers:{'Cache-Control':'no-store'}})}
-export function failure(e:any){return json({error:e?.message||'Não foi possível concluir a operação.'},400)}
+export function failure(e:any){return json({error:e?.message||'Não foi possível concluir a operação.'},e?.status||400)}
 async function cryptoKey(){const master=runtime().ENCRYPTION_KEY;if(!master)throw Error('Proteção de credenciais ainda não configurada no servidor.');return crypto.subtle.importKey('raw',await crypto.subtle.digest('SHA-256',new TextEncoder().encode(master)),{name:'AES-GCM'},false,['encrypt','decrypt'])}
 export async function seal(value:string){const iv=crypto.getRandomValues(new Uint8Array(12));const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},await cryptoKey(),new TextEncoder().encode(value));return JSON.stringify({iv:Array.from(iv),data:Array.from(new Uint8Array(ciphertext))})}
 export async function unseal(value:string){const d=JSON.parse(value);return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(d.iv)},await cryptoKey(),new Uint8Array(d.data)))}
