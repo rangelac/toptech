@@ -1,7 +1,7 @@
 import {guardPlatform,db,runtime,json,failure} from '@/lib/server';
 import {verifyPassword,takeLoginAttempt,newToken,sha256,sessionCookie,SESSION_SECONDS} from '@/lib/auth';
 export async function POST(req:Request){try{
- guardPlatform(req,true);const platform=req.headers.get('oai-authenticated-user-id')!;
+ guardPlatform(req,true);const platform='toptech';
  if(!await takeLoginAttempt(db(),platform))return json({error:'Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.'},429);
  const body=await req.json() as any;const password=typeof body.password==='string'?body.password:'';
  if(password.length>256||typeof body.username!=='string')return json({error:'Usuário ou senha incorretos.'},401);
